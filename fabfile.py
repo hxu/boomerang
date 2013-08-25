@@ -7,6 +7,8 @@ from itertools import chain
 import os
 import sys
 import time
+import errno
+from boto.utils import fetch_file
 
 
 try:
@@ -18,6 +20,8 @@ try:
     from multiprocessing import Pool
     from boto.s3.connection import S3Connection
     from filechunkio import FileChunkIO
+
+
     multipart_capable = True
 except ImportError as err:
     multipart_capable = False
@@ -35,10 +39,10 @@ You should have a .boto file in your home directory for the Boto config
 Also need to have Fabric installed
 """
 
-
 """
 From boto/bin/s3put/
 """
+
 
 def _upload_part(bucketname, aws_key, aws_secret, multipart_id, part_num,
                  source_path, offset, bytes, debug, cb, num_cb,
@@ -77,8 +81,8 @@ def _upload_part(bucketname, aws_key, aws_secret, multipart_id, part_num,
 
 
 def _multipart_upload(bucketname, aws_key, aws_secret, source_path, keyname,
-                     reduced, debug, cb, num_cb, acl='private', headers={},
-                     guess_mimetype=True, parallel_processes=4):
+                      reduced, debug, cb, num_cb, acl='private', headers={},
+                      guess_mimetype=True, parallel_processes=4):
     """
     Parallel multipart upload.
     """
@@ -145,6 +149,22 @@ def _get_key_name(fullpath, prefix, key_prefix):
         key_name = fullpath
     l = key_name.split(os.sep)
     return key_prefix + '/'.join(l)
+
+
+def _get_local_path(key_name, prefix, key_prefix):
+    """
+    Opposite of _get_key_name
+    From a remote key, get the full local path of the file
+    """
+    if not prefix.endswith(os.sep):
+        prefix += os.sep
+
+    if key_name.startswith(key_prefix):
+        full_path = key_name[len(key_prefix):]
+    else:
+        full_path = key_name
+    l = full_path.split('/')
+    return prefix + os.sep.join(l)
 
 
 def put_path(path=None, bucket_name=None, overwrite=0):
@@ -218,24 +238,52 @@ def put_path(path=None, bucket_name=None, overwrite=0):
         # 0-byte files don't work and also don't need multipart upload
         if os.stat(full_path).st_size != 0 and multipart_capable:
             _multipart_upload(bucket_name, aws_access_key_id,
-                             aws_secret_access_key, full_path, key_name,
-                             reduced, debug, cb, num_cb,
-                             grant or 'private', headers)
+                              aws_secret_access_key, full_path, key_name,
+                              reduced, debug, cb, num_cb,
+                              grant or 'private', headers)
         else:
             _singlepart_upload(b, key_name, full_path, cb=cb, num_cb=num_cb,
-                              policy=grant, reduced_redundancy=reduced,
-                              headers=headers)
+                               policy=grant, reduced_redundancy=reduced,
+                               headers=headers)
 
 
-def fetch_path(path=None, bucket_name=None, overwrite=0):
+def fetch_path(key_path=None, bucket_name=None, overwrite=0):
     """
     Fetches a path from an S3 bucket
     If the key in the s3 bucket contains slashes, interpret as a file tree and replicate it locally
     """
+    prefix = os.getcwd() + '/'
+    key_prefix = ''
     overwrite = int(overwrite)
 
     conn = boto.connect_s3()
     b = conn.get_bucket(bucket_name)
+
+    remote_keys = [k for k in b.list(key_path)]
+    if len(remote_keys) == 0:
+        print 'No files matching path in bucket'
+        sys.exit(0)
+
+    for k in remote_keys:
+        filename = _get_local_path(k.key, prefix, key_prefix)
+        dir = os.path.dirname(filename)
+
+        # try to make the directory
+        try:
+            os.makedirs(dir)
+        except OSError as e:
+            if e.errno != errno.EEXIST:
+                raise
+
+        if os.path.exists(filename):
+            if not overwrite:
+                print 'File {} already exists.  Skipping'.format(filename)
+                continue
+
+            print 'File {} already exists.  Overwriting'.format(filename)
+        print 'Retrieving {} to {}'.format(k, filename)
+        outfile = open(filename, 'w')
+        k.get_contents_to_file(outfile)
 
 
 def provision_instance(itype=None, ami=None, security_group=None, ssh_key=None):
@@ -260,9 +308,11 @@ def generate_script():
     outfile.close()
     """
 
+
 def send_job(source_script=None, in_directory=None, out_directory=None,
              base_directory='task/',
-             itype=DEFAULT_INSTANCE_TYPE, ami=DEFAULT_AMI, security_group=DEFAULT_SECURITY_GROUP, ssh_key=DEFAULT_SSH_KEY,
+             itype=DEFAULT_INSTANCE_TYPE, ami=DEFAULT_AMI, security_group=DEFAULT_SECURITY_GROUP,
+             ssh_key=DEFAULT_SSH_KEY,
              ssh_key_path=DEFAULT_SSH_KEY_PATH):
     """
     Spins up an instance, deploys the job, then exits
@@ -302,8 +352,10 @@ def send_job(source_script=None, in_directory=None, out_directory=None,
     with cd('~'):
         run('mkdir {}'.format(base_directory))
     with cd(path_to_base_directory):
+        pass
 
     instance.terminate()
+
 
 def list_instances():
     """
