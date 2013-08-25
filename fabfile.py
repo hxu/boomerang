@@ -6,6 +6,7 @@ import boto
 from itertools import chain
 import os
 import sys
+import time
 
 
 try:
@@ -21,10 +22,13 @@ try:
 except ImportError as err:
     multipart_capable = False
 
-DEFAULT_INSTANCE_TYPE = ''
-DEFAULT_AMI = ''
+DEFAULT_INSTANCE_TYPE = 't1.micro'
+DEFAULT_AMI = 'ami-c30360aa'
 DEFAULT_REGION = 'us-east-1'
-DEFAULT_BUCKET = 'cyberport-ams-solar'
+DEFAULT_BUCKET = 'boom_test'
+DEFAULT_SSH_KEY = 'hgcrpd'
+DEFAULT_SSH_KEY_PATH = '~/aws/hgcrpd.pem'
+DEFAULT_SECURITY_GROUP = 'ssh-only'
 
 """
 You should have a .boto file in your home directory for the Boto config
@@ -223,10 +227,22 @@ def put_path(path=None, bucket_name=None, overwrite=0):
                               headers=headers)
 
 
+def fetch_path(path=None, bucket_name=None, overwrite=0):
+    """
+    Fetches a path from an S3 bucket
+    If the key in the s3 bucket contains slashes, interpret as a file tree and replicate it locally
+    """
+    overwrite = int(overwrite)
+
+    conn = boto.connect_s3()
+    b = conn.get_bucket(bucket_name)
+
+
 def provision_instance(itype=None, ami=None, security_group=None, ssh_key=None):
     """
     Provisions and instance and returns the instance object
     """
+    print "Launching {} instance with ami {}.".format(itype, ami)
     conn = boto.connect_ec2()
     res = conn.run_instances(ami, key_name=ssh_key, security_groups=[security_group], instance_type=itype)
     return res.instances[0]
@@ -243,6 +259,51 @@ def generate_script():
     subprocess.call('Rscript --vanilla --verbose test.R'.split(' '), stdout=outfile, stderr=subprocess.STDOUT)
     outfile.close()
     """
+
+def send_job(source_script=None, in_directory=None, out_directory=None,
+             base_directory='task/',
+             itype=DEFAULT_INSTANCE_TYPE, ami=DEFAULT_AMI, security_group=DEFAULT_SECURITY_GROUP, ssh_key=DEFAULT_SSH_KEY,
+             ssh_key_path=DEFAULT_SSH_KEY_PATH):
+    """
+    Spins up an instance, deploys the job, then exits
+    """
+    user = 'ubuntu'
+    ssh_key_path = _expand_path(ssh_key_path)
+    path_to_base_directory = '~/{}'.format(base_directory)
+
+    instance = None
+    try:
+        instance = provision_instance(itype=itype, ami=ami, security_group=security_group, ssh_key=ssh_key)
+        print "Waiting for instance to boot"
+        while instance.state != 'running':
+            print "."
+            time.sleep(5)
+            instance.update()
+    except KeyboardInterrupt:
+        print 'Operation cancelled by user.  Attempting to terminate instance'
+        if instance:
+            instance.terminate()
+        sys.exit(1)
+
+    print "Instance is running at ip {}".format(instance.ip_address)
+    print "Connecting as user {}".format(user)
+
+    # Set up the fabric environment to connect to the new machine
+    env.host_string = instance.ip_address
+    env.user = user
+    env.key_filename = ssh_key_path
+
+    time.sleep(15)
+    run('uname -a')
+    run('ls -la')
+    run('pwd')
+
+    # Send files to the server
+    with cd('~'):
+        run('mkdir {}'.format(base_directory))
+    with cd(path_to_base_directory):
+
+    instance.terminate()
 
 def list_instances():
     """
