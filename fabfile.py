@@ -4,6 +4,20 @@ from fabric.operations import open_shell, reboot
 from fabric.utils import puts, warn
 import boto
 from itertools import chain
+import os
+
+try:
+    # multipart portions copyright Fabian Topfstedt
+    # https://gist.github.com/924094
+
+    import math
+    import mimetypes
+    from multiprocessing import Pool
+    from boto.s3.connection import S3Connection
+    from filechunkio import FileChunkIO
+    multipart_capable = True
+except ImportError as err:
+    multipart_capable = False
 
 DEFAULT_INSTANCE_TYPE = ''
 DEFAULT_AMI = ''
@@ -15,6 +29,97 @@ You should have a .boto file in your home directory for the Boto config
 Also need to have Fabric installed
 """
 
+
+"""
+From boto/bin/s3put/
+"""
+
+def _upload_part(bucketname, aws_key, aws_secret, multipart_id, part_num,
+                 source_path, offset, bytes, debug, cb, num_cb,
+                 amount_of_retries=10):
+    """
+    Uploads a part with retries.
+    """
+    if debug == 1:
+        print "_upload_part(%s, %s, %s)" % (source_path, offset, bytes)
+
+    def _upload(retries_left=amount_of_retries):
+        try:
+            if debug == 1:
+                print 'Start uploading part #%d ...' % part_num
+            conn = S3Connection(aws_key, aws_secret)
+            conn.debug = debug
+            bucket = conn.get_bucket(bucketname)
+            for mp in bucket.get_all_multipart_uploads():
+                if mp.id == multipart_id:
+                    with FileChunkIO(source_path, 'r', offset=offset,
+                                     bytes=bytes) as fp:
+                        mp.upload_part_from_file(fp=fp, part_num=part_num,
+                                                 cb=cb, num_cb=num_cb)
+                    break
+        except Exception, exc:
+            if retries_left:
+                _upload(retries_left=retries_left - 1)
+            else:
+                print 'Failed uploading part #%d' % part_num
+                raise exc
+        else:
+            if debug == 1:
+                print '... Uploaded part #%d' % part_num
+
+    _upload()
+
+
+def multipart_upload(bucketname, aws_key, aws_secret, source_path, keyname,
+                     reduced, debug, cb, num_cb, acl='private', headers={},
+                     guess_mimetype=True, parallel_processes=4):
+    """
+    Parallel multipart upload.
+    """
+    conn = S3Connection(aws_key, aws_secret)
+    conn.debug = debug
+    bucket = conn.get_bucket(bucketname)
+
+    if guess_mimetype:
+        mtype = mimetypes.guess_type(keyname)[0] or 'application/octet-stream'
+        headers.update({'Content-Type': mtype})
+
+    mp = bucket.initiate_multipart_upload(keyname, headers=headers,
+                                          reduced_redundancy=reduced)
+
+    source_size = os.stat(source_path).st_size
+    bytes_per_chunk = max(int(math.sqrt(5242880) * math.sqrt(source_size)),
+                          5242880)
+    chunk_amount = int(math.ceil(source_size / float(bytes_per_chunk)))
+
+    pool = Pool(processes=parallel_processes)
+    for i in range(chunk_amount):
+        offset = i * bytes_per_chunk
+        remaining_bytes = source_size - offset
+        bytes = min([bytes_per_chunk, remaining_bytes])
+        part_num = i + 1
+        pool.apply_async(_upload_part, [bucketname, aws_key, aws_secret, mp.id,
+                                        part_num, source_path, offset, bytes,
+                                        debug, cb, num_cb])
+    pool.close()
+    pool.join()
+
+    if len(mp.get_all_parts()) == chunk_amount:
+        mp.complete_upload()
+        key = bucket.get_key(keyname)
+        key.set_acl(acl)
+    else:
+        mp.cancel_upload()
+
+
+def singlepart_upload(bucket, key_name, fullpath, *kargs, **kwargs):
+    """
+    Single upload.
+    """
+    k = bucket.new_key(key_name)
+    k.set_contents_from_filename(fullpath, *kargs, **kwargs)
+
+
 def provision_instance(itype=None, ami=None, security_group=None, ssh_key=None):
     """
     Provisions and instance and returns the instance object
@@ -25,12 +130,18 @@ def provision_instance(itype=None, ami=None, security_group=None, ssh_key=None):
 
 
 def expand_path(path):
+    """
+    Expands paths to full paths
+    """
     path = os.path.expanduser(path)
     path = os.path.expandvars(path)
     return os.path.abspath(path)
 
 
 def get_key_name(fullpath, prefix, key_prefix):
+    """
+    Takes a file path and strips out the prefix while adding in key_prefix
+    """
     if fullpath.startswith(prefix):
         key_name = fullpath[len(prefix):]
     else:
@@ -39,14 +150,24 @@ def get_key_name(fullpath, prefix, key_prefix):
     return key_prefix + '/'.join(l)
 
 
-def put_path(path=None, bucket=None):
+def put_path(path=None, bucket_name=None, overwrite=0):
     """
     Puts a path to S3
     If the path is a file, puts just the file into the bucket
     If the path is a folder, recursively puts the folder into the bucket
     """
+    cb = None
+    num_cb = 0
+    debug = 0
+    reduced = True
+    grant = None
+    headers = {}
+    aws_access_key_id = None
+    aws_secret_access_key = None
+
+    overwrite = int(overwrite)
     conn = boto.connect_s3()
-    b = c.get_bucket(bucket)
+    b = conn.get_bucket(bucket_name)
     path = expand_path(path)
     files_to_check_for_upload = []
     existing_keys_to_check_against = []
@@ -54,25 +175,55 @@ def put_path(path=None, bucket=None):
     key_prefix = ''
 
     # Take inventory of the files to upload
-    # upload a directory of files recursively
+    # For directories, walk recursively
+    files_in_bucket = [k.name for k in b.list()]
     if os.path.isdir(path):
         print 'Getting list of existing keys to check against'
-            for key in b.list(get_key_name(path, prefix, key_prefix)):
-                existing_keys_to_check_against.append(key.name)
         for root, dirs, files in os.walk(path):
-            for path in files:
-                if path.startswith("."):
+            for p in files:
+                if p.startswith("."):
                     continue
-                files_to_check_for_upload.append(os.path.join(root, path))
-    # upload a single file
+                full_path = os.path.join(root, p)
+                key_name = get_key_name(full_path, prefix, key_prefix)
+                files_to_check_for_upload.append(full_path)
+                if key_name in files_in_bucket:
+                    existing_keys_to_check_against.append(full_path)
+    # for single files, just add the file
     elif os.path.isfile(path):
-        fullpath = os.path.abspath(path)
-        key_name = get_key_name(fullpath, prefix, key_prefix)
-        files_to_check_for_upload.append(fullpath)
-        existing_keys_to_check_against.append(key_name)
+        full_path = os.path.abspath(path)
+        key_name = get_key_name(full_path, prefix, key_prefix)
+        files_to_check_for_upload.append(full_path)
+        if key_name in files_in_bucket:
+            existing_keys_to_check_against.append(full_path)
     # we are trying to upload something unknown
     else:
         print "I don't know what %s is, so i can't upload it" % path
+
+    print "{} files to upload:".format(len(files_to_check_for_upload))
+    pprint(files_to_check_for_upload)
+    print "{} Existing files already in bucket:".format(len(existing_keys_to_check_against))
+    pprint(existing_keys_to_check_against)
+
+    for full_path in files_to_check_for_upload:
+        key_name = get_key_name(full_path, prefix, key_prefix)
+
+        if full_path in existing_keys_to_check_against:
+            if not overwrite and b.get_key(key_name):
+                print 'Skipping %s as it exists in s3' % full_path
+                continue
+
+        print 'Copying %s to %s/%s' % (full_path, bucket_name, key_name)
+
+        # 0-byte files don't work and also don't need multipart upload
+        if os.stat(full_path).st_size != 0 and multipart_capable:
+            multipart_upload(bucket_name, aws_access_key_id,
+                             aws_secret_access_key, full_path, key_name,
+                             reduced, debug, cb, num_cb,
+                             grant or 'private', headers)
+        else:
+            singlepart_upload(b, key_name, full_path, cb=cb, num_cb=num_cb,
+                              policy=grant, reduced_redundancy=reduced,
+                              headers=headers)
 
 
 def generate_script():
