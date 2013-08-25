@@ -5,6 +5,8 @@ from fabric.utils import puts, warn
 import boto
 from itertools import chain
 import os
+import sys
+
 
 try:
     # multipart portions copyright Fabian Topfstedt
@@ -70,7 +72,7 @@ def _upload_part(bucketname, aws_key, aws_secret, multipart_id, part_num,
     _upload()
 
 
-def multipart_upload(bucketname, aws_key, aws_secret, source_path, keyname,
+def _multipart_upload(bucketname, aws_key, aws_secret, source_path, keyname,
                      reduced, debug, cb, num_cb, acl='private', headers={},
                      guess_mimetype=True, parallel_processes=4):
     """
@@ -112,7 +114,7 @@ def multipart_upload(bucketname, aws_key, aws_secret, source_path, keyname,
         mp.cancel_upload()
 
 
-def singlepart_upload(bucket, key_name, fullpath, *kargs, **kwargs):
+def _singlepart_upload(bucket, key_name, fullpath, *kargs, **kwargs):
     """
     Single upload.
     """
@@ -120,16 +122,7 @@ def singlepart_upload(bucket, key_name, fullpath, *kargs, **kwargs):
     k.set_contents_from_filename(fullpath, *kargs, **kwargs)
 
 
-def provision_instance(itype=None, ami=None, security_group=None, ssh_key=None):
-    """
-    Provisions and instance and returns the instance object
-    """
-    conn = boto.ec2.connect_to_region(DEFAULT_REGION)
-    res = conn.run_instances(ami, key_name=ssh_key, security_groups=[security_group], instance_type=itype)
-    return res.instances[0]
-
-
-def expand_path(path):
+def _expand_path(path):
     """
     Expands paths to full paths
     """
@@ -138,7 +131,7 @@ def expand_path(path):
     return os.path.abspath(path)
 
 
-def get_key_name(fullpath, prefix, key_prefix):
+def _get_key_name(fullpath, prefix, key_prefix):
     """
     Takes a file path and strips out the prefix while adding in key_prefix
     """
@@ -156,6 +149,10 @@ def put_path(path=None, bucket_name=None, overwrite=0):
     If the path is a file, puts just the file into the bucket
     If the path is a folder, recursively puts the folder into the bucket
     """
+    if bucket_name is None:
+        print 'You must provide a bucket name'
+        sys.exit(0)
+
     cb = None
     num_cb = 0
     debug = 0
@@ -168,7 +165,7 @@ def put_path(path=None, bucket_name=None, overwrite=0):
     overwrite = int(overwrite)
     conn = boto.connect_s3()
     b = conn.get_bucket(bucket_name)
-    path = expand_path(path)
+    path = _expand_path(path)
     files_to_check_for_upload = []
     existing_keys_to_check_against = []
     prefix = os.getcwd() + '/'
@@ -184,14 +181,14 @@ def put_path(path=None, bucket_name=None, overwrite=0):
                 if p.startswith("."):
                     continue
                 full_path = os.path.join(root, p)
-                key_name = get_key_name(full_path, prefix, key_prefix)
+                key_name = _get_key_name(full_path, prefix, key_prefix)
                 files_to_check_for_upload.append(full_path)
                 if key_name in files_in_bucket:
                     existing_keys_to_check_against.append(full_path)
     # for single files, just add the file
     elif os.path.isfile(path):
         full_path = os.path.abspath(path)
-        key_name = get_key_name(full_path, prefix, key_prefix)
+        key_name = _get_key_name(full_path, prefix, key_prefix)
         files_to_check_for_upload.append(full_path)
         if key_name in files_in_bucket:
             existing_keys_to_check_against.append(full_path)
@@ -205,7 +202,7 @@ def put_path(path=None, bucket_name=None, overwrite=0):
     pprint(existing_keys_to_check_against)
 
     for full_path in files_to_check_for_upload:
-        key_name = get_key_name(full_path, prefix, key_prefix)
+        key_name = _get_key_name(full_path, prefix, key_prefix)
 
         if full_path in existing_keys_to_check_against:
             if not overwrite and b.get_key(key_name):
@@ -216,14 +213,23 @@ def put_path(path=None, bucket_name=None, overwrite=0):
 
         # 0-byte files don't work and also don't need multipart upload
         if os.stat(full_path).st_size != 0 and multipart_capable:
-            multipart_upload(bucket_name, aws_access_key_id,
+            _multipart_upload(bucket_name, aws_access_key_id,
                              aws_secret_access_key, full_path, key_name,
                              reduced, debug, cb, num_cb,
                              grant or 'private', headers)
         else:
-            singlepart_upload(b, key_name, full_path, cb=cb, num_cb=num_cb,
+            _singlepart_upload(b, key_name, full_path, cb=cb, num_cb=num_cb,
                               policy=grant, reduced_redundancy=reduced,
                               headers=headers)
+
+
+def provision_instance(itype=None, ami=None, security_group=None, ssh_key=None):
+    """
+    Provisions and instance and returns the instance object
+    """
+    conn = boto.connect_ec2()
+    res = conn.run_instances(ami, key_name=ssh_key, security_groups=[security_group], instance_type=itype)
+    return res.instances[0]
 
 
 def generate_script():
@@ -231,13 +237,18 @@ def generate_script():
     Generates the remote script to be run on the instance
     Saves the file to a temporary location and returns the path
     """
-    pass
+    SCRIPT_TEXT = """
+    # Make sure to make the file first
+    outfile = open('./data/outfile.Rout', mode='w')
+    subprocess.call('Rscript --vanilla --verbose test.R'.split(' '), stdout=outfile, stderr=subprocess.STDOUT)
+    outfile.close()
+    """
 
 def list_instances():
     """
     Lists all instances
     """
-    conn = boto.ec2.connect_to_region(DEFAULT_REGION)
+    conn = boto.connect_ec2()
     res = conn.get_all_instances()
     if len(res) == 0:
         print('No instances')
