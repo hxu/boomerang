@@ -1,3 +1,4 @@
+from __future__ import division
 from pprint import pprint
 from fabric.api import local, cd, env, run, prefix, sudo, execute
 from fabric.operations import open_shell, reboot
@@ -43,6 +44,15 @@ Also need to have Fabric installed
 From boto/bin/s3put/
 """
 
+
+def _progress_cb(completed, total):
+    if total != 0:
+        sys.stdout.write('\rTransferred {} of {} ({:.2%})'.format(completed, total, completed / total))
+        sys.stdout.flush()
+    if completed == total:
+        sys.stdout.write(' - DONE')
+        sys.stdout.flush()
+        sys.stdout.write('\n')
 
 def _upload_part(bucketname, aws_key, aws_secret, multipart_id, part_num,
                  source_path, offset, bytes, debug, cb, num_cb,
@@ -177,8 +187,8 @@ def put_path(path=None, bucket_name=None, overwrite=0):
         print 'You must provide a bucket name'
         sys.exit(0)
 
-    cb = None
-    num_cb = 0
+    cb = _progress_cb
+    num_cb = 100
     debug = 0
     reduced = True
     grant = None
@@ -255,6 +265,8 @@ def fetch_path(key_path=None, bucket_name=None, overwrite=0):
     prefix = os.getcwd() + '/'
     key_prefix = ''
     overwrite = int(overwrite)
+    cb = _progress_cb
+    num_cb = 100
 
     conn = boto.connect_s3()
     b = conn.get_bucket(bucket_name)
@@ -283,7 +295,7 @@ def fetch_path(key_path=None, bucket_name=None, overwrite=0):
             print 'File {} already exists.  Overwriting'.format(filename)
         print 'Retrieving {} to {}'.format(k, filename)
         outfile = open(filename, 'w')
-        k.get_contents_to_file(outfile)
+        k.get_contents_to_file(outfile, cb=cb, num_cb=num_cb)
 
 
 def provision_instance(itype=None, ami=None, security_group=None, ssh_key=None):
