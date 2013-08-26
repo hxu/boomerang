@@ -1,6 +1,7 @@
 from __future__ import division
 import shutil
 from fabric.api import local, cd, env, run, prefix, sudo, execute
+from fabric.exceptions import NetworkError
 from fabric.operations import open_shell, reboot, os, put
 from fabric.utils import puts, warn
 import boto
@@ -20,6 +21,7 @@ DEFAULT_BUCKET = 'boom_test'
 DEFAULT_SSH_KEY = 'hgcrpd'
 DEFAULT_SSH_KEY_PATH = '~/aws/hgcrpd.pem'
 DEFAULT_SECURITY_GROUP = 'ssh-only'
+TEMPORARY_FOLDER = '.boom_tmp/'
 
 """
 You should have a .boto file in your home directory for the Boto config
@@ -134,10 +136,46 @@ os.system('sudo shutdown -h now')
     return script_text
 
 
+
+def _cleanup_workspace(temp_folder=TEMPORARY_FOLDER):
+    """
+    Cleans up temporary files
+    """
+    shutil.rmtree(TEMPORARY_FOLDER)
+
+
+def _make_workspace(temp_folder=TEMPORARY_FOLDER):
+    """
+    Creates temporary workspace for files
+    """
+    if os.path.exists(TEMPORARY_FOLDER) and os.path.isdir(TEMPORARY_FOLDER):
+        shutil.rmtree(TEMPORARY_FOLDER)
+    os.makedirs(TEMPORARY_FOLDER)
+
+
+def _get_existing_instance(instance_id):
+    """
+    Gets an existing instance object
+    """
+    conn = boto.connect_ec2()
+    res = [r for r in conn.get_all_instances(instance_id)]
+    if len(res) == 0:
+        print 'Instance not found. Aborting'
+        sys.exit(1)
+    elif len(res) > 1:
+        print 'Multiple instances found.  Aborting'
+        sys.exit(1)
+    elif len(res) == 1:
+        # We're assuming that each reservation only has one instance
+        # Not considering the case where a reservation can have multiple instances
+        instance = res[0].instances[0]
+    return instance
+
 def send_job(source_script=None, in_directory=None, out_directory=None,
              base_directory='task/',
              load_from_s3=0, s3_bucket_name=None, s3_fetch_path=None,
              put_to_s3=0,
+             existing_instance=None,
              itype=DEFAULT_INSTANCE_TYPE, ami=DEFAULT_AMI, security_group=DEFAULT_SECURITY_GROUP,
              ssh_key=DEFAULT_SSH_KEY,
              ssh_key_path=DEFAULT_SSH_KEY_PATH):
@@ -147,10 +185,9 @@ def send_job(source_script=None, in_directory=None, out_directory=None,
     load_from_s3 = int(load_from_s3)
     put_to_s3 = int(put_to_s3)
     out_log_file = base_directory + out_directory + 'shell_log.txt'
-    TEMPORARY_FOLDER = '.boom_tmp/'
+    _make_workspace()
 
     # Prepare the local job files
-    os.makedirs(TEMPORARY_FOLDER)
     f = open(TEMPORARY_FOLDER + 'boom_task.py', 'w')
     f.write(generate_script(fetch=load_from_s3,
                             bucket_name=s3_bucket_name,
@@ -166,9 +203,14 @@ def send_job(source_script=None, in_directory=None, out_directory=None,
     path_to_base_directory = '~/{}'.format(base_directory)
 
     instance = None
+
     try:
-        instance = provision_instance(itype=itype, ami=ami, security_group=security_group, ssh_key=ssh_key)
-        print "Waiting for instance to boot"
+        if not existing_instance:
+            instance = provision_instance(itype=itype, ami=ami, security_group=security_group, ssh_key=ssh_key)
+            print "Waiting for instance to boot"
+        else:
+            instance = _get_existing_instance(existing_instance)
+            print 'Using existing instance {}'.format(existing_instance)
         while instance.state != 'running':
             print "."
             time.sleep(5)
@@ -177,8 +219,10 @@ def send_job(source_script=None, in_directory=None, out_directory=None,
         print 'Operation cancelled by user.  Attempting to terminate instance'
         if instance:
             instance.terminate()
+        _cleanup_workspace()
         sys.exit(1)
 
+    time.sleep(15)
     print "Instance is running at ip {}".format(instance.ip_address)
     print "Connecting as user {}".format(user)
 
@@ -187,26 +231,39 @@ def send_job(source_script=None, in_directory=None, out_directory=None,
     env.user = user
     env.key_filename = ssh_key_path
 
-    time.sleep(15)
-    run('uname -a')
-    run('ls -la')
-    run('pwd')
+    attempt = 1
+    success = False
+    while not success and attempt <= 3:
+        try:
+            run('uname -a')
+            run('pwd')
+            success = True
+        except NetworkError as e:
+            print "Could not connect: {}".format(e)
+            print "Retrying"
+            attempt += 1
+            continue
+
+    if not success:
+        print "Could not connect after 3 tries.  Aborting"
+        _cleanup_workspace()
+        sys.exit(1)
 
     # Send files to the server
     with cd('~'):
+        run('rm -R {}'.format(base_directory))
         run('mkdir {}'.format(base_directory))
+        put(local_path=TEMPORARY_FOLDER + 'boom_task.py', remote_path=base_directory + 'boom_task.py')
+        put(local_path=source_script, remote_path=base_directory + source_script)
     with cd(path_to_base_directory):
         print 'Transferring scripts to instance'
-        # TODO: BUG HERE.  Puts the file to home directory, not in the base task directory
-        put(local_path=TEMPORARY_FOLDER + 'boom_task.py')
-        put(local_path=source_script)
         # Kick off the script with tmux
         print 'Kicking off the task'
         run("tmux new-session -s boom_job -d")
         run("tmux pipe-pane -o -t boom_job 'exec cat >> {}'".format(out_log_file))
         run("tmux send -t boom_job python boom_task.py")
 
-    shutil.rmtree(TEMPORARY_FOLDER)
+    _cleanup_workspace()
 
 
 def list_instances():
