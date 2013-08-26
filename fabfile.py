@@ -1,6 +1,7 @@
 from __future__ import division
 import shutil
 from fabric.api import local, cd, env, run, prefix, sudo, execute
+from fabric.contrib.files import exists
 from fabric.exceptions import NetworkError
 from fabric.operations import open_shell, reboot, os, put
 from fabric.utils import puts, warn
@@ -251,10 +252,11 @@ def send_job(source_script=None, in_directory=None, out_directory=None,
 
     # Send files to the server
     with cd('~'):
-        run('rm -R {}'.format(base_directory))
+        if exists(base_directory):
+            run('rm -R {}'.format(base_directory))
         run('mkdir {}'.format(base_directory))
-        put(local_path=TEMPORARY_FOLDER + 'boom_task.py', remote_path=base_directory + 'boom_task.py')
-        put(local_path=source_script, remote_path=base_directory + source_script)
+        put(local_path=_expand_path('./' + TEMPORARY_FOLDER + 'boom_task.py'), remote_path=base_directory + 'boom_task.py')
+        put(local_path=_expand_path('./' + source_script), remote_path=base_directory + source_script)
     with cd(path_to_base_directory):
         print 'Transferring scripts to instance'
         # Kick off the script with tmux
