@@ -231,6 +231,7 @@ def send_job(source_script=None, in_directory=None, out_directory=None,
         _cleanup_workspace()
         sys.exit(1)
 
+    time.sleep(15)
     print "Instance is running at ip {}".format(instance.ip_address)
     print "Connecting as user {}".format(user)
 
