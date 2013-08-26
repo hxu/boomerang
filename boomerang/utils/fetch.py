@@ -8,7 +8,8 @@ try:
 except ImportError:
     pass
 
-def fetch_path(key_path=None, bucket_name=None, overwrite=0):
+def fetch_path(key_path=None, bucket_name=None, overwrite=0,
+               aws_access_key_id=None, aws_secret_access_key=None):
     """
     Fetches a path from an S3 bucket
     If the key in the s3 bucket contains slashes, interpret as a file tree and replicate it locally
@@ -19,7 +20,7 @@ def fetch_path(key_path=None, bucket_name=None, overwrite=0):
     cb = _progress_cb
     num_cb = 100
 
-    conn = boto.connect_s3()
+    conn = boto.connect_s3(aws_access_key_id, aws_secret_access_key)
     b = conn.get_bucket(bucket_name)
 
     remote_keys = [k for k in b.list(key_path)]

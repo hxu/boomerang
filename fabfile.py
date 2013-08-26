@@ -1,6 +1,6 @@
 from __future__ import division
 from fabric.api import local, cd, env, run, prefix, sudo, execute
-from fabric.operations import open_shell, reboot
+from fabric.operations import open_shell, reboot, os, put
 from fabric.utils import puts, warn
 import boto
 from itertools import chain
@@ -32,7 +32,8 @@ def provision_instance(itype=None, ami=None, security_group=None, ssh_key=None):
     """
     print "Launching {} instance with ami {}.".format(itype, ami)
     conn = boto.connect_ec2()
-    res = conn.run_instances(ami, key_name=ssh_key, security_groups=[security_group], instance_type=itype)
+    res = conn.run_instances(ami, key_name=ssh_key, security_groups=[security_group], instance_type=itype,
+                             instance_initiated_shutdown_behavior='terminate')
     return res.instances[0]
 
 
@@ -46,24 +47,41 @@ def _generate_fetch_script(key_path=None, bucket_name=None):
     f = open('boomerang/utils/fetch.py')
     SCRIPT_TEXT += f.read()
     f.close()
-    SCRIPT_TEXT +=  """
-fetch_path(key_path=$key_path, bucket_name=$bucket_name, overwrite=1)
+    SCRIPT_TEXT += """
+fetch_path(key_path=$key_path,
+    bucket_name=$bucket_name,
+    aws_access_key_id=$aws_access_key_id,
+    aws_secret_access_key=$aws_secret_access_key,
+    overwrite=1)
 """
-    return Template(SCRIPT_TEXT).substitute(key_path=key_path, bucket_name=bucket_name)
+    return Template(SCRIPT_TEXT).substitute(key_path=key_path,
+                                            bucket_name=bucket_name,
+                                            aws_access_key_id=boto.config.get('Credentials', 'aws_access_key_id'),
+                                            aws_secret_access_key=boto.config.get('Credentials',
+                                                                                  'aws_secret_access_key')
+    )
 
 
-def _generate_run_script():
+def _generate_run_script(script_name=None, out_path=None):
     """
     Generates the remote script to be run on the instance
     Saves the file to a temporary location and returns the path
     """
+    r_log_filename = 'r_log.txt'
+    r_log_path = './' + out_path + r_log_filename
+    call_command = ['Rscript', '--vanilla', '--verbose', script_name]
 
     SCRIPT_TEXT = """
-    # Make sure to make the file first
-    outfile = open('./data/outfile.Rout', mode='w')
-    subprocess.call('Rscript --vanilla --verbose test.R'.split(' '), stdout=outfile, stderr=subprocess.STDOUT)
-    outfile.close()
-    """
+# Make sure to make the file first
+import subprocess
+outfile = open($r_log_path, mode='w')
+subprocess.call($call_command, stdout=outfile, stderr=subprocess.STDOUT)
+outfile.close()
+
+"""
+
+    return Template(SCRIPT_TEXT).substitute(r_log_path=r_log_path, call_command=call_command)
+
 
 def _generate_put_script(path=None, bucket_name=None):
     """
@@ -75,20 +93,69 @@ def _generate_put_script(path=None, bucket_name=None):
     f = open('boomerang/utils/put.py')
     SCRIPT_TEXT += f.read()
     f.close()
-    SCRIPT_TEXT +=  """
-put_path(path=$path, bucket_name=$bucket_name, overwrite=1)
+    SCRIPT_TEXT += """
+put_path(path=$path,
+    bucket_name=$bucket_name,
+    aws_access_key_id=$aws_access_key_id,
+    aws_secret_access_key=$aws_secret_access_key,
+    overwrite=1)
+
 """
-    return Template(SCRIPT_TEXT).substitute(path=path, bucket_name=bucket_name)
+    return Template(SCRIPT_TEXT).substitute(path=path,
+                                            bucket_name=bucket_name,
+                                            aws_access_key_id=boto.config.get('Credentials', 'aws_access_key_id'),
+                                            aws_secret_access_key=boto.config.get('Credentials',
+                                                                                  'aws_secret_access_key')
+    )
+
+
+def generate_script(fetch=False, bucket_name=None, fetch_path=None,
+                    put=False, out_path=None,
+                    run=False, script_name=None):
+    script_text = ''
+    if fetch:
+        script_text += _generate_fetch_script(fetch_path, bucket_name)
+
+    if run:
+        script_text += _generate_run_script(script_name, out_path)
+
+    if put:
+        script_text += _generate_put_script(out_path, bucket_name)
+
+    script_text += """
+import os
+os.system('shutdown -h now')
+"""
+
+    return script_text
 
 
 def send_job(source_script=None, in_directory=None, out_directory=None,
              base_directory='task/',
+             load_from_s3=0, s3_bucket_name=None, s3_fetch_path=None,
+             put_to_s3=0,
              itype=DEFAULT_INSTANCE_TYPE, ami=DEFAULT_AMI, security_group=DEFAULT_SECURITY_GROUP,
              ssh_key=DEFAULT_SSH_KEY,
              ssh_key_path=DEFAULT_SSH_KEY_PATH):
     """
     Spins up an instance, deploys the job, then exits
     """
+    load_from_s3 = int(load_from_s3)
+    put_to_s3 = int(put_to_s3)
+    out_log_file = out_directory + 'shell_log.txt'
+
+    # Prepare the local job files
+    os.makedirs('./.tmp/')
+    f = open('./.tmp/boom_task.py', 'w')
+    f.write(generate_script(fetch=load_from_s3,
+                            bucket_name=s3_bucket_name,
+                            fetch_path=s3_fetch_path,
+                            put=put_to_s3,
+                            out_path=out_directory,
+                            run=True,
+                            script_name=source_script))
+    f.close()
+
     user = 'ubuntu'
     ssh_key_path = _expand_path(ssh_key_path)
     path_to_base_directory = '~/{}'.format(base_directory)
@@ -124,16 +191,12 @@ def send_job(source_script=None, in_directory=None, out_directory=None,
     with cd('~'):
         run('mkdir {}'.format(base_directory))
     with cd(path_to_base_directory):
-        pass
-
-    # Kick off the script with tmux
-    """
-    tmux new-session -s boom_job -d
-    tmux pipe-pane -o -t boom_job 'exec cat >> log.txt'
-    tmux send -t boom_job python
-    """
-
-    instance.terminate()
+        put(local_path='./.tmp/boom_task.py', remote_path='./')
+        put(local_path=source_script, remote_path='./')
+        # Kick off the script with tmux
+        run("tmux new-session -s boom_job -d")
+        run("tmux pipe-pane -o -t boom_job 'exec cat >> {}'".format(out_log_file))
+        run("tmux send -t boom_job python boom_task.py")
 
 
 def list_instances():

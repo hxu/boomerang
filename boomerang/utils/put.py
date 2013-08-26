@@ -115,7 +115,8 @@ def _singlepart_upload(bucket, key_name, fullpath, *kargs, **kwargs):
     k.set_contents_from_filename(fullpath, *kargs, **kwargs)
 
 
-def put_path(path=None, bucket_name=None, overwrite=0):
+def put_path(path=None, bucket_name=None, overwrite=0,
+             aws_access_key_id=None, aws_secret_access_key=None):
     """
     Puts a path to S3
     If the path is a file, puts just the file into the bucket
@@ -131,11 +132,9 @@ def put_path(path=None, bucket_name=None, overwrite=0):
     reduced = True
     grant = None
     headers = {}
-    aws_access_key_id = None
-    aws_secret_access_key = None
 
     overwrite = int(overwrite)
-    conn = boto.connect_s3()
+    conn = boto.connect_s3(aws_access_key_id, aws_secret_access_key)
     b = conn.get_bucket(bucket_name)
     path = _expand_path(path)
     files_to_check_for_upload = []
