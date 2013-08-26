@@ -3,6 +3,7 @@ from pprint import pprint
 import boto
 import os
 import sys
+from boomerang.connection import connect_s3
 
 try:
     from common import _progress_cb, _expand_path, _get_key_name
@@ -42,7 +43,7 @@ def _upload_part(bucketname, aws_key, aws_secret, multipart_id, part_num,
         try:
             if debug == 1:
                 print 'Start uploading part #%d ...' % part_num
-            conn = S3Connection(aws_key, aws_secret)
+            conn = connect_s3(aws_key, aws_secret)
             conn.debug = debug
             bucket = conn.get_bucket(bucketname)
             for mp in bucket.get_all_multipart_uploads():
@@ -71,7 +72,7 @@ def _multipart_upload(bucketname, aws_key, aws_secret, source_path, keyname,
     """
     Parallel multipart upload.
     """
-    conn = S3Connection(aws_key, aws_secret)
+    conn = connect_s3(aws_key, aws_secret)
     conn.debug = debug
     bucket = conn.get_bucket(bucketname)
 
@@ -134,7 +135,7 @@ def put_path(path=None, bucket_name=None, overwrite=0,
     headers = {}
 
     overwrite = int(overwrite)
-    conn = boto.connect_s3(aws_access_key_id, aws_secret_access_key)
+    conn = connect_s3(aws_access_key_id, aws_secret_access_key)
     b = conn.get_bucket(bucket_name)
     path = _expand_path(path)
     files_to_check_for_upload = []

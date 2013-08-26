@@ -2,6 +2,7 @@ import boto
 import os
 import sys
 import errno
+from boomerang.connection import connect_s3
 
 try:
     from common import _progress_cb, _get_local_path
@@ -20,7 +21,7 @@ def fetch_path(key_path=None, bucket_name=None, overwrite=0,
     cb = _progress_cb
     num_cb = 100
 
-    conn = boto.connect_s3(aws_access_key_id, aws_secret_access_key)
+    conn = connect_s3(aws_access_key_id, aws_secret_access_key)
     b = conn.get_bucket(bucket_name)
 
     remote_keys = [k for k in b.list(key_path)]
@@ -30,11 +31,11 @@ def fetch_path(key_path=None, bucket_name=None, overwrite=0,
 
     for k in remote_keys:
         filename = _get_local_path(k.key, prefix, key_prefix)
-        dir = os.path.dirname(filename)
+        filedir = os.path.dirname(filename)
 
         # try to make the directory
         try:
-            os.makedirs(dir)
+            os.makedirs(filedir)
         except OSError as e:
             if e.errno != errno.EEXIST:
                 raise

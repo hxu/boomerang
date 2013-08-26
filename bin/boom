@@ -1,0 +1,8 @@
+#!/usr/bin/env python
+
+
+if __name__ == '__main__':
+    import argparse
+    main_parser = argparse.ArgumentParser(
+        description="Boomerang command line interface."
+    )

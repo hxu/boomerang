@@ -1,0 +1,29 @@
+#!/usr/bin/env python
+
+if __name__ == '__main__':
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Fetch objects from S3"
+    )
+
+    parser.add_argument(
+        'bucket_name',
+        help="The remote bucket name to connect to"
+    )
+    parser.add_argument(
+        'key_path',
+        help="The key to retrieve.  If it is folder, will retrieve the whole tree"
+    )
+    parser.add_argument(
+        '-o --overwrite',
+        dest='overwrite',
+        default=False,
+        help="Overwrite local files"
+    )
+
+    args = parser.parse_args()
+
+    from boomerang.utils.fetch import fetch_path
+
+    fetch_path(key_path=args.key_path, bucket_name=args.bucket_name, overwrite=args.overwrite)
