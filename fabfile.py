@@ -1,4 +1,5 @@
 from __future__ import division
+import re
 import shutil
 from fabric.api import local, cd, env, run, prefix, sudo, execute
 from fabric.contrib.files import exists
@@ -134,6 +135,12 @@ import os
 os.system('sudo shutdown -h now')
 """
 
+    # Strip out from __future__ imports and move to the beginning of the file
+    imports = set(re.findall('from __future__.+\n', script_text))
+    for i in imports:
+        script_text = script_text.replace(i, '')
+        script_text = i + script_text
+
     return script_text
 
 
@@ -219,11 +226,11 @@ def send_job(source_script=None, in_directory=None, out_directory=None,
     except KeyboardInterrupt:
         print 'Operation cancelled by user.  Attempting to terminate instance'
         if instance:
+            # This does not always terminate, if we are really early in the launch process
             instance.terminate()
         _cleanup_workspace()
         sys.exit(1)
 
-    time.sleep(15)
     print "Instance is running at ip {}".format(instance.ip_address)
     print "Connecting as user {}".format(user)
 
@@ -251,19 +258,20 @@ def send_job(source_script=None, in_directory=None, out_directory=None,
         sys.exit(1)
 
     # Send files to the server
-    with cd('~'):
-        if exists(base_directory):
-            run('rm -R {}'.format(base_directory))
-        run('mkdir {}'.format(base_directory))
-        put(local_path=_expand_path('./' + TEMPORARY_FOLDER + 'boom_task.py'), remote_path=base_directory + 'boom_task.py')
-        put(local_path=_expand_path('./' + source_script), remote_path=base_directory + source_script)
+    if exists(base_directory):
+        run('rm -R {}'.format(base_directory))
+    run('mkdir {}'.format(base_directory))
+
+    put(local_path=_expand_path('./' + TEMPORARY_FOLDER + 'boom_task.py'), remote_path='~/' + base_directory)
+    put(local_path=_expand_path('./' + source_script), remote_path='~/' + base_directory)
+
     with cd(path_to_base_directory):
         print 'Transferring scripts to instance'
         # Kick off the script with tmux
         print 'Kicking off the task'
         run("tmux new-session -s boom_job -d")
         run("tmux pipe-pane -o -t boom_job 'exec cat >> {}'".format(out_log_file))
-        run("tmux send -t boom_job python boom_task.py")
+        run("tmux send -t boom_job 'python boom_task.py ENTER'")
 
     _cleanup_workspace()
 
