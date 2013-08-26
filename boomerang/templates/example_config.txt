@@ -1,0 +1,10 @@
+########
+# Example Configuration File
+########
+
+[aws_credentials]
+aws_access_key_id = <YOUR ACCESS KEY>
+aws_secret_access_key = <YOUR SECRET KEY>
+
+[boomerang]
+default_instance = t1.micro

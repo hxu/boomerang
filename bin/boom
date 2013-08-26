@@ -3,6 +3,56 @@
 
 if __name__ == '__main__':
     import argparse
-    main_parser = argparse.ArgumentParser(
-        description="Boomerang command line interface."
+    parser = argparse.ArgumentParser(
+        description="Launch a Boomerang job."
     )
+
+    parser.add_argument(
+        'script',
+        help="The R script to run.  Should be self-contained (not requiring any other external files."
+    )
+
+    parser.add_argument(
+        'out_path',
+        help="The folder to save logs and output to"
+    )
+
+    parser.add_argument(
+        '-b --bucket',
+        dest='bucket_name',
+        nargs=1,
+        help='S3 bucket to fetch/put files to.'
+    )
+
+    parser.add_argument(
+        '-p --put',
+        dest='put_results',
+        action='store_true',
+        help='Put the output folder to S3 after the script is done running.'
+    )
+
+    parser.add_argument(
+        '-f --fetch',
+        dest='fetch_path',
+        nargs=1,
+        help='The remote key to get from S3 before kicking off the script'
+    )
+
+    parser.add_argument(
+        '-i --instance',
+        dest='instance',
+        nargs=1,
+        help="A running instance name.  If provided, will use the existing instance instead of spinning up a new one"
+    )
+
+    parser.add_argument(
+        '-d --dependencies',
+        dest='deps',
+        nargs='+',
+        # Sometimes dependencies may be in other directories, in which case we'd have to handle putting those to the server in the right path
+        help="Dependencies of the script.  NOT IMPLEMENTED"
+    )
+
+    args = parser.parse_args()
+
+    from boomerang import send_job
