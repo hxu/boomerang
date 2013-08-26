@@ -197,7 +197,7 @@ def send_job(source_script=None, in_directory=None, out_directory=None,
         run('mkdir {}'.format(base_directory))
     with cd(path_to_base_directory):
         print 'Transferring scripts to instance'
-        # TODO: BUG HERE
+        # TODO: BUG HERE.  Puts the file to home directory, not in the base task directory
         put(local_path=TEMPORARY_FOLDER + 'boom_task.py')
         put(local_path=source_script)
         # Kick off the script with tmux
