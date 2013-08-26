@@ -1,4 +1,5 @@
 from __future__ import division
+import shutil
 from fabric.api import local, cd, env, run, prefix, sudo, execute
 from fabric.operations import open_shell, reboot, os, put
 from fabric.utils import puts, warn
@@ -13,7 +14,7 @@ from boomerang.utils.put import put_path
 
 
 DEFAULT_INSTANCE_TYPE = 't1.micro'
-DEFAULT_AMI = 'ami-c30360aa'
+DEFAULT_AMI = 'ami-0b9ad862'
 DEFAULT_REGION = 'us-east-1'
 DEFAULT_BUCKET = 'boom_test'
 DEFAULT_SSH_KEY = 'hgcrpd'
@@ -48,10 +49,10 @@ def _generate_fetch_script(key_path=None, bucket_name=None):
     SCRIPT_TEXT += f.read()
     f.close()
     SCRIPT_TEXT += """
-fetch_path(key_path=$key_path,
-    bucket_name=$bucket_name,
-    aws_access_key_id=$aws_access_key_id,
-    aws_secret_access_key=$aws_secret_access_key,
+fetch_path(key_path='$key_path',
+    bucket_name='$bucket_name',
+    aws_access_key_id='$aws_access_key_id',
+    aws_secret_access_key='$aws_secret_access_key',
     overwrite=1)
 """
     return Template(SCRIPT_TEXT).substitute(key_path=key_path,
@@ -68,7 +69,7 @@ def _generate_run_script(script_name=None, out_path=None):
     Saves the file to a temporary location and returns the path
     """
     r_log_filename = 'r_log.txt'
-    r_log_path = './' + out_path + r_log_filename
+    r_log_path = out_path + r_log_filename
     call_command = ['Rscript', '--vanilla', '--verbose', script_name]
 
     SCRIPT_TEXT = """
@@ -76,8 +77,8 @@ def _generate_run_script(script_name=None, out_path=None):
 import os
 import subprocess
 
-os.makedirs($out_path)
-outfile = open($r_log_path, mode='w')
+os.makedirs('$out_path')
+outfile = open('$r_log_path', mode='w')
 subprocess.call($call_command, stdout=outfile, stderr=subprocess.STDOUT)
 outfile.close()
 
@@ -97,10 +98,10 @@ def _generate_put_script(path=None, bucket_name=None):
     SCRIPT_TEXT += f.read()
     f.close()
     SCRIPT_TEXT += """
-put_path(path=$path,
-    bucket_name=$bucket_name,
-    aws_access_key_id=$aws_access_key_id,
-    aws_secret_access_key=$aws_secret_access_key,
+put_path(path='$path',
+    bucket_name='$bucket_name',
+    aws_access_key_id='$aws_access_key_id',
+    aws_secret_access_key='$aws_secret_access_key',
     overwrite=1)
 
 """
@@ -127,7 +128,7 @@ def generate_script(fetch=False, bucket_name=None, fetch_path=None,
 
     script_text += """
 import os
-os.system('shutdown -h now')
+os.system('sudo shutdown -h now')
 """
 
     return script_text
@@ -145,11 +146,12 @@ def send_job(source_script=None, in_directory=None, out_directory=None,
     """
     load_from_s3 = int(load_from_s3)
     put_to_s3 = int(put_to_s3)
-    out_log_file = out_directory + 'shell_log.txt'
+    out_log_file = base_directory + out_directory + 'shell_log.txt'
+    TEMPORARY_FOLDER = '.boom_tmp/'
 
     # Prepare the local job files
-    os.makedirs('./.tmp/')
-    f = open('./.tmp/boom_task.py', 'w')
+    os.makedirs(TEMPORARY_FOLDER)
+    f = open(TEMPORARY_FOLDER + 'boom_task.py', 'w')
     f.write(generate_script(fetch=load_from_s3,
                             bucket_name=s3_bucket_name,
                             fetch_path=s3_fetch_path,
@@ -194,12 +196,17 @@ def send_job(source_script=None, in_directory=None, out_directory=None,
     with cd('~'):
         run('mkdir {}'.format(base_directory))
     with cd(path_to_base_directory):
-        put(local_path='./.tmp/boom_task.py', remote_path='./')
-        put(local_path=source_script, remote_path='./')
+        print 'Transferring scripts to instance'
+        # TODO: BUG HERE
+        put(local_path=TEMPORARY_FOLDER + 'boom_task.py')
+        put(local_path=source_script)
         # Kick off the script with tmux
+        print 'Kicking off the task'
         run("tmux new-session -s boom_job -d")
         run("tmux pipe-pane -o -t boom_job 'exec cat >> {}'".format(out_log_file))
         run("tmux send -t boom_job python boom_task.py")
+
+    shutil.rmtree(TEMPORARY_FOLDER)
 
 
 def list_instances():
