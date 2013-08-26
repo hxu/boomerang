@@ -161,6 +161,14 @@ def _make_workspace(temp_folder=TEMPORARY_FOLDER):
     os.makedirs(TEMPORARY_FOLDER)
 
 
+def _expand_local_path():
+    pass
+
+
+def _expand_remote_path():
+    pass
+
+
 def _get_existing_instance(instance_id):
     """
     Gets an existing instance object
@@ -288,3 +296,8 @@ def list_instances():
     instances = chain.from_iterable([r.instances for r in res])
     for i in instances:
         print('Instance: {}.  Status: {}'.format(i, i.state))
+
+
+"""
+fab send_job:source_script=test.R,in_directory=data/,out_directory=output/,put_to_s3=1,s3_bucket_name=boom_test,load_from_s3=1,s3_fetch_path=data
+"""
