@@ -271,7 +271,7 @@ def send_job(source_script=None, in_directory=None, out_directory=None,
         print 'Kicking off the task'
         run("tmux new-session -s boom_job -d")
         run("tmux pipe-pane -o -t boom_job 'exec cat >> {}'".format(out_log_file))
-        run("tmux send -t boom_job 'python boom_task.py ENTER'")
+        run("tmux send -t boom_job 'python boom_task.py' Enter")
 
     _cleanup_workspace()
 
