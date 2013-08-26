@@ -1,0 +1,29 @@
+#!/usr/bin/env python
+
+if __name__ == '__main__':
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Put objects to S3"
+    )
+
+    parser.add_argument(
+        'bucket_name',
+        help="The remote bucket name to connect to"
+    )
+    parser.add_argument(
+        'path',
+        help="The local path to send.  If it is a file, sends just the file.  If it is a path, sends the whole tree"
+    )
+    parser.add_argument(
+        '-o --overwrite',
+        dest='overwrite',
+        default=False,
+        help="Overwrite remote files"
+    )
+
+    args = parser.parse_args()
+
+    from boomerang.utils.put import put_path
+
+    put_path(path=args.path, bucket_name=args.bucket_name, overwrite=args.overwrite)

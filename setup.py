@@ -12,6 +12,11 @@ setup(
     license='MIT',
     author='Han Xu',
     long_description=README,
+    scripts=[
+        'bin/boom_fetch',
+        'bin/boom_put',
+        'bin/boom'
+    ],
     classifiers=[
         'Environment :: Console',
         'Intended Audience :: Developers',
