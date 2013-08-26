@@ -73,14 +73,17 @@ def _generate_run_script(script_name=None, out_path=None):
 
     SCRIPT_TEXT = """
 # Make sure to make the file first
+import os
 import subprocess
+
+os.makedirs($out_path)
 outfile = open($r_log_path, mode='w')
 subprocess.call($call_command, stdout=outfile, stderr=subprocess.STDOUT)
 outfile.close()
 
 """
 
-    return Template(SCRIPT_TEXT).substitute(r_log_path=r_log_path, call_command=call_command)
+    return Template(SCRIPT_TEXT).substitute(r_log_path=r_log_path, call_command=call_command, out_path=out_path)
 
 
 def _generate_put_script(path=None, bucket_name=None):
