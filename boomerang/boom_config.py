@@ -1,5 +1,6 @@
 import os
-import ConfigParser
+import sys
+import imp
 
 
 DEFAULT_CONFIG_PATH = os.path.expanduser('~/.boomerang')
@@ -7,11 +8,11 @@ DEFAULT_CONFIG_PATH = os.path.expanduser('~/.boomerang')
 AWS_ACCESS_KEY_ID = ''
 AWS_SECRET_ACCESS_KEY = ''
 
-
 if os.path.exists(DEFAULT_CONFIG_PATH):
-    cfg_file = ConfigParser.SafeConfigParser()
-    cfg_file.read(DEFAULT_CONFIG_PATH)
-    if cfg_file.has_option('aws_credentials', 'aws_access_key_id'):
-        AWS_ACCESS_KEY_ID = cfg_file.get('aws_credentials', 'aws_access_key_id')
-    if cfg_file.has_option('aws_credentials', 'aws_secret_access_key'):
-        AWS_SECRET_ACCESS_KEY = cfg_file.get('aws_credentials', 'aws_secret_access_key')
+    cfg_file = imp.load_source('user_config', DEFAULT_CONFIG_PATH)
+    this_module = sys.modules[__name__]
+    for k in dir(cfg_file):
+        if k.startswith('_'):
+            continue
+        else:
+            setattr(this_module, k, getattr(cfg_file, k))
