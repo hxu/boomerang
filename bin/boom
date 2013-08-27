@@ -15,5 +15,6 @@ if __name__ == '__main__':
         put_to_s3=args.put_results,
         load_from_s3=bool(args.fetch_path),
         s3_fetch_path=args.fetch_path,
-        existing_instance=args.instance
+        existing_instance=args.instance,
+        itype=args.instance_type
     )

@@ -163,7 +163,7 @@ def send_job(source_script=None, in_directory=None, out_directory=None,
              load_from_s3=0, s3_bucket_name=None, s3_fetch_path=None,
              put_to_s3=0,
              existing_instance=None,
-             itype=boom_config.DEFAULT_INSTANCE_TYPE, ami=boom_config.DEFAULT_AMI, security_group=boom_config.DEFAULT_SECURITY_GROUP,
+             itype=None, ami=boom_config.DEFAULT_AMI, security_group=boom_config.DEFAULT_SECURITY_GROUP,
              ssh_key=boom_config.DEFAULT_SSH_KEY,
              ssh_key_path=boom_config.DEFAULT_SSH_KEY_PATH):
     """

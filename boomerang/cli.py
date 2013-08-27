@@ -1,4 +1,5 @@
 from argparse import ArgumentParser
+from boomerang import boom_config
 
 
 class BoomFetchCLI(ArgumentParser):
@@ -61,6 +62,13 @@ class BoomCLI(ArgumentParser):
         self.add_argument(
             'out_path',
             help="The folder to save logs and output to"
+        )
+
+        self.add_argument(
+            '-s --size',
+            default=boom_config.DEFAULT_INSTANCE_TYPE,
+            dest='instance_type',
+            help="Instance size"
         )
 
         self.add_argument(
