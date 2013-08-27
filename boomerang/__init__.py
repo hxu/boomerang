@@ -1,4 +1,5 @@
 from __future__ import division
+import os
 import re
 import shutil
 from itertools import chain
@@ -6,17 +7,27 @@ import sys
 import time
 from string import Template
 
-from fabric.api import cd, env, run
+from fabric.api import env, run
+from fabric.api import put as fabput
+from fabric.context_managers import cd
 from fabric.contrib.files import exists
-from fabric.exceptions import NetworkError
-from fabric.operations import os, put
 import boto
+from fabric.exceptions import NetworkError
 
-from boomerang.common import _expand_path
-from boomerang.fetch import fetch_path
-from boomerang.put import put_path
+import common
+import fetch
+import put
+from common import _expand_path
+from fetch import fetch_path
+from put import put_path
 
 from boomerang import boom_config
+
+__all__ = [
+    'common',
+    'fetch',
+    'put'
+]
 
 """
 You should have a .boto file in your home directory for the Boto config
@@ -39,24 +50,14 @@ def _generate_fetch_script(key_path=None, bucket_name=None):
     """
     Portion of the remote script that pulls stuff down from s3
     """
-    f = open('boomerang/utils/common.py')
+    # TODO: This path is not ideal
+    f = open(os.path.dirname(os.path.abspath(__file__)) + '/templates/remote_fetch.py')
     SCRIPT_TEXT = f.read()
     f.close()
-    f = open('boomerang/utils/fetch.py')
-    SCRIPT_TEXT += f.read()
-    f.close()
-    SCRIPT_TEXT += """
-fetch_path(key_path='$key_path',
-    bucket_name='$bucket_name',
-    aws_access_key_id='$aws_access_key_id',
-    aws_secret_access_key='$aws_secret_access_key',
-    overwrite=1)
-"""
     return Template(SCRIPT_TEXT).substitute(key_path=key_path,
                                             bucket_name=bucket_name,
-                                            aws_access_key_id=boto.config.get('Credentials', 'aws_access_key_id'),
-                                            aws_secret_access_key=boto.config.get('Credentials',
-                                                                                  'aws_secret_access_key')
+                                            aws_access_key_id=boom_config.AWS_ACCESS_KEY_ID,
+                                            aws_secret_access_key=boom_config.AWS_SECRET_ACCESS_KEY
     )
 
 
@@ -88,20 +89,10 @@ def _generate_put_script(path=None, bucket_name=None):
     """
     Generates remote script to put files back to s3
     """
-    f = open('boomerang/utils/common.py')
+    # TODO: This path is not ideal
+    f = open(os.path.dirname(os.path.abspath(__file__)) + '/templates/remote_put.py')
     SCRIPT_TEXT = f.read()
     f.close()
-    f = open('boomerang/utils/put.py')
-    SCRIPT_TEXT += f.read()
-    f.close()
-    SCRIPT_TEXT += """
-put_path(path='$path',
-    bucket_name='$bucket_name',
-    aws_access_key_id='$aws_access_key_id',
-    aws_secret_access_key='$aws_secret_access_key',
-    overwrite=1)
-
-"""
     return Template(SCRIPT_TEXT).substitute(path=path,
                                             bucket_name=bucket_name,
                                             aws_access_key_id=boto.config.get('Credentials', 'aws_access_key_id'),
@@ -192,6 +183,8 @@ def send_job(source_script=None, in_directory=None, out_directory=None,
     """
     load_from_s3 = int(load_from_s3)
     put_to_s3 = int(put_to_s3)
+    if not out_directory.endswith('/'):
+        out_directory += '/'
     out_log_file = base_directory + out_directory + 'shell_log.txt'
     _make_workspace()
 
@@ -263,8 +256,8 @@ def send_job(source_script=None, in_directory=None, out_directory=None,
         run('rm -R {}'.format(base_directory))
     run('mkdir {}'.format(base_directory))
 
-    put(local_path=_expand_path('./' + boom_config.TEMPORARY_FOLDER + 'boom_task.py'), remote_path='~/' + base_directory)
-    put(local_path=_expand_path('./' + source_script), remote_path='~/' + base_directory)
+    fabput(local_path=_expand_path('./' + boom_config.TEMPORARY_FOLDER + 'boom_task.py'), remote_path='~/' + base_directory)
+    fabput(local_path=_expand_path('./' + source_script), remote_path='~/' + base_directory)
 
     with cd(path_to_base_directory):
         print 'Transferring scripts to instance'

@@ -66,7 +66,6 @@ class BoomCLI(ArgumentParser):
         self.add_argument(
             '-b --bucket',
             dest='bucket_name',
-            nargs=1,
             help='S3 bucket to fetch/put files to.'
         )
 
@@ -80,14 +79,12 @@ class BoomCLI(ArgumentParser):
         self.add_argument(
             '-f --fetch',
             dest='fetch_path',
-            nargs=1,
             help='The remote key to get from S3 before kicking off the script'
         )
 
         self.add_argument(
             '-i --instance',
             dest='instance',
-            nargs=1,
             help="A running instance name.  If provided, will use the existing instance instead of spinning up a new one"
         )
 
@@ -98,3 +95,7 @@ class BoomCLI(ArgumentParser):
             # Sometimes dependencies may be in other directories, in which case we'd have to handle putting those to the server in the right path
             help="Dependencies of the script.  NOT IMPLEMENTED"
         )
+
+    def validate(self):
+        # Bucket must be provided if flag -p or -f is pprovided
+        pass

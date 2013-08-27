@@ -8,3 +8,12 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     from boomerang import send_job
+    send_job(
+        source_script=args.script,
+        out_directory=args.out_path,
+        s3_bucket_name=args.bucket_name,
+        put_to_s3=args.put_results,
+        load_from_s3=bool(args.fetch_path),
+        s3_fetch_path=args.fetch_path,
+        existing_instance=args.instance
+    )
