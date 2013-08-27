@@ -193,6 +193,15 @@ def send_job(source_script=None, in_directory=None, out_directory=None,
 
     instance = None
 
+    # When provisioning a spot instance
+    # res = conn.request_spot_instances(price='0.011', instance_type='t1.micro', image_id='ami-0b9ad862')
+    # res[0] gives the spot reservation
+    # but this does not have an update method, so need to do
+    # conn.get_all_spot_instance_requests(res[0].id)
+    # res[0].state = 'active'
+    # or res[0].status.code = 'fulfilled'
+    # then res[0].instance_id
+
     try:
         if not existing_instance:
             instance = provision_instance(itype=itype, ami=ami, security_group=security_group, ssh_key=ssh_key)
