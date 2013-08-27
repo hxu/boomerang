@@ -1,6 +1,4 @@
-"""
-Fetch script to be uploaded to the remote server
-"""
+TEMPLATE_TEXT = """
 import boto
 import os
 import sys
@@ -8,18 +6,14 @@ import errno
 
 def _progress_cb(completed, total):
     if total != 0:
-        sys.stdout.write('\rTransferred {} of {} ({:.2%})'.format(completed, total, float(completed) / total))
+        sys.stdout.write('\\rTransferred {} of {} ({:.2%})'.format(completed, total, float(completed) / total))
         sys.stdout.flush()
     if completed == total:
         sys.stdout.write(' - DONE')
         sys.stdout.flush()
-        sys.stdout.write('\n')
+        sys.stdout.write('\\n')
 
 def _get_local_path(key_name, prefix, key_prefix):
-    """
-    Opposite of _get_key_name
-    From a remote key, get the full local path of the file
-    """
     if not prefix.endswith(os.sep):
         prefix += os.sep
 
@@ -32,10 +26,6 @@ def _get_local_path(key_name, prefix, key_prefix):
 
 def fetch_path(key_path=None, bucket_name=None, overwrite=0,
                aws_access_key_id=None, aws_secret_access_key=None):
-    """
-    Fetches a path from an S3 bucket
-    If the key in the s3 bucket contains slashes, interpret as a file tree and replicate it locally
-    """
     prefix = os.getcwd() + '/'
     key_prefix = ''
     overwrite = int(overwrite)
@@ -77,3 +67,4 @@ fetch_path(key_path='$key_path',
            aws_access_key_id='$aws_access_key_id',
            aws_secret_access_key='$aws_secret_access_key',
            overwrite=1)
+"""

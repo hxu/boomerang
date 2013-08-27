@@ -11,7 +11,6 @@ from fabric.api import env, run
 from fabric.api import put as fabput
 from fabric.context_managers import cd
 from fabric.contrib.files import exists
-import boto
 from fabric.exceptions import NetworkError
 
 import common
@@ -22,6 +21,7 @@ from fetch import fetch_path
 from put import put_path
 
 from boomerang import boom_config
+from connection import connect_ec2
 
 __all__ = [
     'common',
@@ -29,18 +29,13 @@ __all__ = [
     'put'
 ]
 
-"""
-You should have a .boto file in your home directory for the Boto config
-Also need to have Fabric installed
-"""
-
 
 def provision_instance(itype=None, ami=None, security_group=None, ssh_key=None):
     """
     Provisions and instance and returns the instance object
     """
     print "Launching {} instance with ami {}.".format(itype, ami)
-    conn = boto.connect_ec2()
+    conn = connect_ec2()
     res = conn.run_instances(ami, key_name=ssh_key, security_groups=[security_group], instance_type=itype,
                              instance_initiated_shutdown_behavior='terminate')
     return res.instances[0]
@@ -50,11 +45,8 @@ def _generate_fetch_script(key_path=None, bucket_name=None):
     """
     Portion of the remote script that pulls stuff down from s3
     """
-    # TODO: This path is not ideal
-    f = open(os.path.dirname(os.path.abspath(__file__)) + '/templates/remote_fetch.py')
-    SCRIPT_TEXT = f.read()
-    f.close()
-    return Template(SCRIPT_TEXT).substitute(key_path=key_path,
+    from templates.remote_fetch import TEMPLATE_TEXT
+    return Template(TEMPLATE_TEXT).substitute(key_path=key_path,
                                             bucket_name=bucket_name,
                                             aws_access_key_id=boom_config.AWS_ACCESS_KEY_ID,
                                             aws_secret_access_key=boom_config.AWS_SECRET_ACCESS_KEY
@@ -89,15 +81,11 @@ def _generate_put_script(path=None, bucket_name=None):
     """
     Generates remote script to put files back to s3
     """
-    # TODO: This path is not ideal
-    f = open(os.path.dirname(os.path.abspath(__file__)) + '/templates/remote_put.py')
-    SCRIPT_TEXT = f.read()
-    f.close()
-    return Template(SCRIPT_TEXT).substitute(path=path,
+    from templates.remote_put import TEMPLATE_TEXT
+    return Template(TEMPLATE_TEXT).substitute(path=path,
                                             bucket_name=bucket_name,
-                                            aws_access_key_id=boto.config.get('Credentials', 'aws_access_key_id'),
-                                            aws_secret_access_key=boto.config.get('Credentials',
-                                                                                  'aws_secret_access_key')
+                                            aws_access_key_id=boom_config.AWS_ACCESS_KEY_ID,
+                                            aws_secret_access_key=boom_config.AWS_SECRET_ACCESS_KEY
     )
 
 
@@ -156,7 +144,7 @@ def _get_existing_instance(instance_id):
     """
     Gets an existing instance object
     """
-    conn = boto.connect_ec2()
+    conn = connect_ec2()
     res = [r for r in conn.get_all_instances(instance_id)]
     if len(res) == 0:
         print 'Instance not found. Aborting'
@@ -213,9 +201,10 @@ def send_job(source_script=None, in_directory=None, out_directory=None,
             instance = _get_existing_instance(existing_instance)
             print 'Using existing instance {}'.format(existing_instance)
         while instance.state != 'running':
-            print "."
+            sys.stdout.write(".")
             time.sleep(5)
             instance.update()
+        sys.stdout.write('\n')
     except KeyboardInterrupt:
         print 'Operation cancelled by user.  Attempting to terminate instance'
         if instance:
@@ -274,7 +263,7 @@ def list_instances():
     """
     Lists all instances
     """
-    conn = boto.connect_ec2()
+    conn = connect_ec2()
     res = conn.get_all_instances()
     if len(res) == 0:
         print('No instances')

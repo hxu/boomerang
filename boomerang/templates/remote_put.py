@@ -1,12 +1,8 @@
+TEMPLATE_TEXT = """
 from pprint import pprint
 import boto
 import os
 import sys
-
-"""
-From boto/bin/s3put/
-"""
-
 
 try:
     # multipart portions copyright Fabian Topfstedt
@@ -26,27 +22,21 @@ except ImportError as err:
 
 def _progress_cb(completed, total):
     if total != 0:
-        sys.stdout.write('\rTransferred {} of {} ({:.2%})'.format(completed, total, float(completed) / total))
+        sys.stdout.write('\\rTransferred {} of {} ({:.2%})'.format(completed, total, float(completed) / total))
         sys.stdout.flush()
     if completed == total:
         sys.stdout.write(' - DONE')
         sys.stdout.flush()
-        sys.stdout.write('\n')
+        sys.stdout.write('\\n')
 
 
 def _expand_path(path):
-    """
-    Expands paths to full paths
-    """
     path = os.path.expanduser(path)
     path = os.path.expandvars(path)
     return os.path.abspath(path)
 
 
 def _get_key_name(fullpath, prefix, key_prefix):
-    """
-    Takes a file path and strips out the prefix while adding in key_prefix
-    """
     if fullpath.startswith(prefix):
         key_name = fullpath[len(prefix):]
     else:
@@ -56,10 +46,6 @@ def _get_key_name(fullpath, prefix, key_prefix):
 
 
 def _get_local_path(key_name, prefix, key_prefix):
-    """
-    Opposite of _get_key_name
-    From a remote key, get the full local path of the file
-    """
     if not prefix.endswith(os.sep):
         prefix += os.sep
 
@@ -69,12 +55,11 @@ def _get_local_path(key_name, prefix, key_prefix):
         full_path = key_name
     l = full_path.split('/')
     return prefix + os.sep.join(l)
+
+
 def _upload_part(bucketname, aws_key, aws_secret, multipart_id, part_num,
                  source_path, offset, bytes, debug, cb, num_cb,
                  amount_of_retries=10):
-    """
-    Uploads a part with retries.
-    """
     if debug == 1:
         print "_upload_part(%s, %s, %s)" % (source_path, offset, bytes)
 
@@ -108,9 +93,6 @@ def _upload_part(bucketname, aws_key, aws_secret, multipart_id, part_num,
 def _multipart_upload(bucketname, aws_key, aws_secret, source_path, keyname,
                       reduced, debug, cb, num_cb, acl='private', headers={},
                       guess_mimetype=True, parallel_processes=4):
-    """
-    Parallel multipart upload.
-    """
     conn = boto.connect_s3(aws_key, aws_secret)
     conn.debug = debug
     bucket = conn.get_bucket(bucketname)
@@ -148,20 +130,12 @@ def _multipart_upload(bucketname, aws_key, aws_secret, source_path, keyname,
 
 
 def _singlepart_upload(bucket, key_name, fullpath, *kargs, **kwargs):
-    """
-    Single upload.
-    """
     k = bucket.new_key(key_name)
     k.set_contents_from_filename(fullpath, *kargs, **kwargs)
 
 
 def put_path(path=None, bucket_name=None, overwrite=0,
              aws_access_key_id=None, aws_secret_access_key=None):
-    """
-    Puts a path to S3
-    If the path is a file, puts just the file into the bucket
-    If the path is a folder, recursively puts the folder into the bucket
-    """
     if bucket_name is None:
         print 'You must provide a bucket name'
         sys.exit(0)
@@ -239,3 +213,4 @@ put_path(path='$path',
          aws_access_key_id='$aws_access_key_id',
          aws_secret_access_key='$aws_secret_access_key',
          overwrite=1)
+"""
