@@ -1,19 +1,20 @@
 from __future__ import division
 import re
 import shutil
-from fabric.api import local, cd, env, run, prefix, sudo, execute
-from fabric.contrib.files import exists
-from fabric.exceptions import NetworkError
-from fabric.operations import open_shell, reboot, os, put
-from fabric.utils import puts, warn
-import boto
 from itertools import chain
 import sys
 import time
 from string import Template
-from boomerang.utils.common import _expand_path
-from boomerang.utils.fetch import fetch_path
-from boomerang.utils.put import put_path
+
+from fabric.api import cd, env, run
+from fabric.contrib.files import exists
+from fabric.exceptions import NetworkError
+from fabric.operations import os, put
+import boto
+
+from boomerang.common import _expand_path
+from boomerang.fetch import fetch_path
+from boomerang.put import put_path
 
 
 DEFAULT_INSTANCE_TYPE = 't1.micro'
