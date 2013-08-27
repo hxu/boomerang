@@ -1,27 +1,9 @@
 #!/usr/bin/env python
 
 if __name__ == '__main__':
-    import argparse
+    from boomerang.cli import BoomFetchCLI
 
-    parser = argparse.ArgumentParser(
-        description="Fetch objects from S3"
-    )
-
-    parser.add_argument(
-        'bucket_name',
-        help="The remote bucket name to connect to"
-    )
-    parser.add_argument(
-        'key_path',
-        help="The key to retrieve.  If it is folder, will retrieve the whole tree"
-    )
-    parser.add_argument(
-        '-o --overwrite',
-        dest='overwrite',
-        action='store_true',
-        help="Overwrite local files"
-    )
-
+    parser = BoomFetchCLI()
     args = parser.parse_args()
 
     from boomerang.fetch import fetch_path
