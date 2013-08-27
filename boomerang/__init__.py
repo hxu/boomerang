@@ -16,15 +16,7 @@ from boomerang.common import _expand_path
 from boomerang.fetch import fetch_path
 from boomerang.put import put_path
 
-
-DEFAULT_INSTANCE_TYPE = 't1.micro'
-DEFAULT_AMI = 'ami-0b9ad862'
-DEFAULT_REGION = 'us-east-1'
-DEFAULT_BUCKET = 'boom_test'
-DEFAULT_SSH_KEY = 'hgcrpd'
-DEFAULT_SSH_KEY_PATH = '~/aws/hgcrpd.pem'
-DEFAULT_SECURITY_GROUP = 'ssh-only'
-TEMPORARY_FOLDER = '.boom_tmp/'
+from boomerang import boom_config
 
 """
 You should have a .boto file in your home directory for the Boto config
@@ -145,21 +137,20 @@ os.system('sudo shutdown -h now')
     return script_text
 
 
-
-def _cleanup_workspace(temp_folder=TEMPORARY_FOLDER):
+def _cleanup_workspace(temp_folder=boom_config.TEMPORARY_FOLDER):
     """
     Cleans up temporary files
     """
-    shutil.rmtree(TEMPORARY_FOLDER)
+    shutil.rmtree(temp_folder)
 
 
-def _make_workspace(temp_folder=TEMPORARY_FOLDER):
+def _make_workspace(temp_folder=boom_config.TEMPORARY_FOLDER):
     """
     Creates temporary workspace for files
     """
-    if os.path.exists(TEMPORARY_FOLDER) and os.path.isdir(TEMPORARY_FOLDER):
-        shutil.rmtree(TEMPORARY_FOLDER)
-    os.makedirs(TEMPORARY_FOLDER)
+    if os.path.exists(temp_folder) and os.path.isdir(temp_folder):
+        shutil.rmtree(temp_folder)
+    os.makedirs(temp_folder)
 
 
 def _expand_local_path():
@@ -193,9 +184,9 @@ def send_job(source_script=None, in_directory=None, out_directory=None,
              load_from_s3=0, s3_bucket_name=None, s3_fetch_path=None,
              put_to_s3=0,
              existing_instance=None,
-             itype=DEFAULT_INSTANCE_TYPE, ami=DEFAULT_AMI, security_group=DEFAULT_SECURITY_GROUP,
-             ssh_key=DEFAULT_SSH_KEY,
-             ssh_key_path=DEFAULT_SSH_KEY_PATH):
+             itype=boom_config.DEFAULT_INSTANCE_TYPE, ami=boom_config.DEFAULT_AMI, security_group=boom_config.DEFAULT_SECURITY_GROUP,
+             ssh_key=boom_config.DEFAULT_SSH_KEY,
+             ssh_key_path=boom_config.DEFAULT_SSH_KEY_PATH):
     """
     Spins up an instance, deploys the job, then exits
     """
@@ -205,7 +196,7 @@ def send_job(source_script=None, in_directory=None, out_directory=None,
     _make_workspace()
 
     # Prepare the local job files
-    f = open(TEMPORARY_FOLDER + 'boom_task.py', 'w')
+    f = open(boom_config.TEMPORARY_FOLDER + 'boom_task.py', 'w')
     f.write(generate_script(fetch=load_from_s3,
                             bucket_name=s3_bucket_name,
                             fetch_path=s3_fetch_path,
@@ -272,7 +263,7 @@ def send_job(source_script=None, in_directory=None, out_directory=None,
         run('rm -R {}'.format(base_directory))
     run('mkdir {}'.format(base_directory))
 
-    put(local_path=_expand_path('./' + TEMPORARY_FOLDER + 'boom_task.py'), remote_path='~/' + base_directory)
+    put(local_path=_expand_path('./' + boom_config.TEMPORARY_FOLDER + 'boom_task.py'), remote_path='~/' + base_directory)
     put(local_path=_expand_path('./' + source_script), remote_path='~/' + base_directory)
 
     with cd(path_to_base_directory):

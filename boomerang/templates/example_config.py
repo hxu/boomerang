@@ -8,10 +8,10 @@ DEFAULT_REGION = 'us-east-1'
 
 DEFAULT_INSTANCE = 't1.micro'
 DEFAULT_AMI = 'ami-0b9ad862'
-DEFAULT_SECURITY_GROUP = 'ssh-only'
+DEFAULT_SECURITY_GROUP = '<ssh security group name>'
 
-DEFAULT_SSH_KEY = 'hgcrpd'
-DEFAULT_SSH_KEY_PATH = '~/aws/hgcrpd.pem'
+DEFAULT_SSH_KEY = '<SSH key name>'
+DEFAULT_SSH_KEY_PATH = '<path/to/ssh/key.pem>'
 
 DEFAULT_BUCKET = 'boom_test'
 
