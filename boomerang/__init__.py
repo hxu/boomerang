@@ -68,7 +68,6 @@ import os
 import subprocess
 
 print 'Starting the R task'
-os.makedirs('$out_path')
 outfile = open('$r_log_path', mode='w')
 subprocess.call($call_command, stdout=outfile, stderr=subprocess.STDOUT)
 outfile.close()
