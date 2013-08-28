@@ -67,6 +67,7 @@ def _generate_run_script(script_name=None, out_path=None):
 import os
 import subprocess
 
+print 'Starting the R task'
 os.makedirs('$out_path')
 outfile = open('$r_log_path', mode='w')
 subprocess.call($call_command, stdout=outfile, stderr=subprocess.STDOUT)
@@ -253,6 +254,7 @@ def send_job(source_script=None, in_directory=None, out_directory=None,
     if exists(base_directory):
         run('rm -R {}'.format(base_directory))
     run('mkdir {}'.format(base_directory))
+    run('mkdir {}'.format(base_directory + out_directory))
 
     fabput(local_path=_expand_path('./' + boom_config.TEMPORARY_FOLDER + 'boom_task.py'), remote_path='~/' + base_directory)
     fabput(local_path=_expand_path('./' + source_script), remote_path='~/' + base_directory)
