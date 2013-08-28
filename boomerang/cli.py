@@ -96,6 +96,8 @@ class BoomCLI(ArgumentParser):
             help="A running instance name.  If provided, will use the existing instance instead of spinning up a new one"
         )
 
+        # TODO: Add arguments to not shutdown after finishing
+
         self.add_argument(
             '-d --dependencies',
             dest='deps',

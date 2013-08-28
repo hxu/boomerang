@@ -7,9 +7,8 @@ def _progress_cb(completed, total):
         sys.stdout.write('\rTransferred {} of {} ({:.2%})'.format(completed, total, completed / total))
         sys.stdout.flush()
     if completed == total:
-        sys.stdout.write(' - DONE')
+        sys.stdout.write(' - DONE\n')
         sys.stdout.flush()
-        sys.stdout.write('\n')
 
 
 def _expand_path(path):
